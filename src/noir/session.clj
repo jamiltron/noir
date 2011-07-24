@@ -1,39 +1,26 @@
 (ns noir.session
-  "Stateful session handling functions. Uses a memory-store by default, but can use a custom store 
-  by supplying a :session-store option to server/start."
+  "Stateful session handling functions. Uses a memory-store by default, but can use a custom store
+by supplying a :session-store option to server/start."
   (:refer-clojure :exclude [get remove])
   (:use ring.middleware.session
-        ring.middleware.session.memory
-        ring.middleware.flash)
+        ring.middleware.session.memory)
   (:require [noir.options :as options]))
 
 (declare *noir-session*)
-(declare *noir-flash*)
 (defonce mem (atom {}))
 
-(defn noir-session [handler]
-  (fn [request]
-    (binding [*noir-session* (atom (:session request))
-              *noir-flash* (atom {:incoming (-> request :flash)})]
-      (let [resp (handler request)
-            outgoing-flash (merge (:outgoing @*noir-flash*)
-                                  (:flash resp))]
-        (if outgoing-flash
-          (assoc resp :session @*noir-session* :flash outgoing-flash)
-          (assoc resp :session @*noir-session*))))))
-
-(defn put! 
+(defn put!
   "Associates the key with the given value in the session"
   [k v]
   (swap! *noir-session* assoc k v))
 
-(defn get 
+(defn get
   "Get the key's value from the session, returns nil if it doesn't exist."
   ([k] (get k nil))
   ([k default]
     (clojure.core/get @*noir-session* k default)))
 
-(defn clear! 
+(defn clear!
   "Remove all data from the session and start over cleanly."
   []
   (reset! *noir-session* {}))
@@ -43,19 +30,28 @@
   [k]
   (swap! *noir-session* dissoc k))
 
-(defn flash-put! [k v]
-  (swap! *noir-flash* (fn [a b] (-> a
-                                    (assoc-in [:outgoing k] b)
-                                    (assoc-in [:incoming k] b))) v))
+(defn flash-put!
+  "Store a value with a lifetime of one retrieval (on the first flash-get,
+it is removed). This is often used for passing small messages to pages
+after a redirect."
+  [v]
+  (put! :_flash v))
 
 (defn flash-get
-  "Get the value from the flash, returns nil if doesn't exist."
-  ([k] (get k nil))
-  ([k default]
-     (clojure.core/get @*noir-flash* k default)))
+  "Retrieve the flash stored value. This will remove the flash from the
+session."
+  []
+  (let [flash (get :_flash)]
+    (remove! :_flash)
+    flash))
+
+(defn noir-session [handler]
+  (fn [request]
+    (binding [*noir-session* (atom (:session request))]
+      (when-let [resp (handler request)]
+        (assoc resp :session @*noir-session*)))))
 
 (defn wrap-noir-session [handler]
   (-> handler
     (noir-session)
-    (wrap-flash)
     (wrap-session {:store (options/get :session-store (memory-store mem))})))
