@@ -33,13 +33,22 @@ by supplying a :session-store option to server/start."
 (defn flash-put!
   "Store a value with a lifetime of one retrieval (on the first flash-get,
 it is removed). This is often used for passing small messages to pages
-after a redirect."
-  [v]
-  (put! :_flash v))
+after a redirect. A category can be supplied in association with the message,
+otherwise 'message' is the default category."
+  ([v] (flash-put! v "message")
+  ([v c] (put! :_flash {:message v :category c}))
 
 (defn flash-get
   "Retrieve the flash stored value. This will remove the flash from the
 session."
+  []
+  (let [flash ((get :_flash) :message)]
+    (remove! :_flash)
+    flash))
+
+(defn flash-get-full
+  "Retrieve the stored flash value and the associated category. This will
+remove the flash from the session."
   []
   (let [flash (get :_flash)]
     (remove! :_flash)
